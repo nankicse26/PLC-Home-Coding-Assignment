@@ -1,0 +1,82 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using System.Collections.Concurrent;
+
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
+    });
+});
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+var app = builder.Build();
+app.UseCors();
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+var tasks = new ConcurrentDictionary<int, TodoTask>();
+var idCounter = 0;
+
+// Seed sample
+var first = new TodoTask { Id = ++idCounter, Description = "Sample task", IsCompleted = false, CreatedAt = DateTime.UtcNow };
+tasks[first.Id] = first;
+
+// Endpoints
+app.MapGet("/api/tasks", () => Results.Ok(tasks.Values.OrderBy(t => t.CreatedAt)));
+
+app.MapGet("/api/tasks/{id:int}", (int id) =>
+{
+    if (tasks.TryGetValue(id, out var t)) return Results.Ok(t);
+    return Results.NotFound();
+});
+
+app.MapPost("/api/tasks", async (TodoTaskCreate dto) =>
+{
+    var id = ++idCounter;
+    var task = new TodoTask
+    {
+        Id = id,
+        Description = dto.Description ?? string.Empty,
+        IsCompleted = false,
+        CreatedAt = DateTime.UtcNow
+    };
+    tasks[task.Id] = task;
+    return Results.Created($"/api/tasks/{task.Id}", task);
+});
+
+app.MapPut("/api/tasks/{id:int}/toggle", (int id) =>
+{
+    if (!tasks.TryGetValue(id, out var t)) return Results.NotFound();
+    t.IsCompleted = !t.IsCompleted;
+    tasks[id] = t;
+    return Results.Ok(t);
+});
+
+app.MapDelete("/api/tasks/{id:int}", (int id) =>
+{
+    if (tasks.TryRemove(id, out _)) return Results.NoContent();
+    return Results.NotFound();
+});
+
+app.Run();
+
+record TodoTask
+{
+    public int Id { get; init; }
+    public string Description { get; init; } = "";
+    public bool IsCompleted { get; set; }
+    public DateTime CreatedAt { get; init; }
+}
+
+record TodoTaskCreate
+{
+    public string? Description { get; init; }
+}
