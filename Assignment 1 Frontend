@@ -1,0 +1,139 @@
+npm create vite@latest frontend-react -- --template react-ts
+cd frontend-react
+npm install axios react-router-dom
+
+import axios from "axios";
+
+const API = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE ?? "http://localhost:5000"
+});
+
+export default API;
+
+export interface Task {
+  id: number;
+  description: string;
+  isCompleted: boolean;
+  createdAt: string;
+}
+
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import App from './App'
+import './index.css'
+
+createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+)
+
+import React from "react";
+import TaskManager from "./TaskManager";
+
+export default function App() {
+  return (
+    <div className="min-h-screen p-6 bg-gray-50">
+      <div className="max-w-2xl mx-auto">
+        <h1 className="text-2xl font-semibold mb-4">Basic Task Manager</h1>
+        <TaskManager />
+      </div>
+    </div>
+  );
+}
+
+
+import React, { useEffect, useState } from "react";
+import API, { Task } from "./api";
+import axios from "axios";
+
+export default function TaskManager() {
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [desc, setDesc] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [filter, setFilter] = useState<"all"|"active"|"completed">("all");
+
+  async function fetchTasks() {
+    setLoading(true);
+    try {
+      const res = await API.get<Task[]>("/api/tasks");
+      setTasks(res.data);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to fetch tasks");
+    } finally { setLoading(false); }
+  }
+
+  useEffect(() => { fetchTasks(); }, []);
+
+  async function addTask(e: React.FormEvent) {
+    e.preventDefault();
+    if (!desc.trim()) return;
+    try {
+      const res = await API.post<Task>("/api/tasks", { description: desc });
+      setTasks(prev => [...prev, res.data]);
+      setDesc("");
+    } catch (err) {
+      console.error(err);
+      alert("Could not add task");
+    }
+  }
+
+  async function toggleTask(id: number) {
+    try {
+      const res = await API.put<Task>(`/api/tasks/${id}/toggle`);
+      setTasks(prev => prev.map(t => t.id === id ? res.data : t));
+    } catch (err) {
+      console.error(err);
+      alert("Could not toggle task");
+    }
+  }
+
+  async function deleteTask(id: number) {
+    if (!confirm("Delete this task?")) return;
+    try {
+      await API.delete(`/api/tasks/${id}`);
+      setTasks(prev => prev.filter(t => t.id !== id));
+    } catch (err) {
+      console.error(err);
+      alert("Could not delete task");
+    }
+  }
+
+  const filtered = tasks.filter(t => 
+    filter === "all" ? true : filter === "active" ? !t.isCompleted : t.isCompleted
+  );
+
+  return (
+    <div className="bg-white p-4 rounded shadow">
+      <form onSubmit={addTask} className="flex gap-2 mb-4">
+        <input value={desc} onChange={e=>setDesc(e.target.value)} placeholder="New task description" className="flex-1 p-2 border rounded"/>
+        <button className="px-4 py-2 bg-blue-600 text-white rounded">Add</button>
+      </form>
+
+      <div className="mb-3">
+        <button className={`mr-2 ${filter==='all'?'font-bold':''}`} onClick={()=>setFilter('all')}>All</button>
+        <button className={`mr-2 ${filter==='active'?'font-bold':''}`} onClick={()=>setFilter('active')}>Active</button>
+        <button className={`${filter==='completed'?'font-bold':''}`} onClick={()=>setFilter('completed')}>Completed</button>
+      </div>
+
+      {loading ? <div>Loading…</div> : (
+        <ul>
+          {filtered.map(t => (
+            <li key={t.id} className="mb-2 flex items-center justify-between">
+              <div>
+                <input type="checkbox" checked={t.isCompleted} onChange={()=>toggleTask(t.id)} />
+                <span className={`ml-2 ${t.isCompleted ? 'line-through text-gray-500' : ''}`}>{t.description}</span>
+              </div>
+              <div>
+                <button onClick={()=>deleteTask(t.id)} className="text-red-600">Delete</button>
+              </div>
+            </li>
+          ))}
+          {filtered.length === 0 && <li className="text-gray-500">No tasks</li>}
+        </ul>
+      )}
+    </div>
+  );
+}
+
